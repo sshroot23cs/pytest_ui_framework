@@ -1,0 +1,8 @@
+# name type value
+search-box:
+  type: "xpath"
+  value: "//*[.='Build a watchlist']//ancestor::*[4]/preceding-sibling::*[1]/*[last()]//input[2]"
+
+
+
+

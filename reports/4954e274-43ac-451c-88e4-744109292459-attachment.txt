@@ -1,0 +1,19 @@
+INFO     src.utilities.customLogger:conftest.py:34 Browser type: chrome
+INFO     src.utilities.customLogger:conftest.py:40 ******** Test Case: test_sample_001 ********
+INFO     src.utilities.customLogger:test_sample_01.py:14 This is a test log message
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
+INFO     src.utilities.customLogger:assert_json.py:34 Comparing Json array
