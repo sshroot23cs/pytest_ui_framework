@@ -1,0 +1,6 @@
+INFO     src.utilities.customLogger:conftest.py:40 ******** Test Case: test_sample_002 ********
+INFO     src.utilities.customLogger:test_sample_02.py:30 Open browser title: StackDemo
+INFO     src.utilities.customLogger:test_sample_02.py:30 Open browser title: Jobs - Recruitment - Job Search - Employment - Job Vacancies - Naukri.com
+INFO     src.utilities.customLogger:test_sample_02.py:30 Open browser title: Facebook – log in or sign up
+INFO     src.utilities.customLogger:test_sample_02.py:30 Open browser title: Google
+INFO     src.utilities.customLogger:test_sample_02.py:30 Open browser title: LinkedIn: Log In or Sign Up
