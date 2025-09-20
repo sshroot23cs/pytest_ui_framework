@@ -1,0 +1,223 @@
+# Docker Compose Configuration for Local Pytest UI Framework
+# This setup mirrors the Azure cloud deployment but runs entirely locally
+
+version: '3.8'
+
+services:
+  # Main pytest test runner
+  pytest-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: pytest-ui-runner
+    volumes:
+      - ./reports:/app/reports
+      - ./screenshots:/app/screenshots
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # For Docker-in-Docker scenarios
+    environment:
+      - ENVIRONMENT=local-docker
+      - HEADLESS=true
+      - CHROME_ARGS=--no-sandbox --disable-dev-shm-usage --disable-gpu
+      - SELENIUM_HUB_URL=http://selenium-hub:4444/wd/hub
+      - RESULTS_STORAGE_PATH=/app/reports
+      - LOG_LEVEL=INFO
+    depends_on:
+      - selenium-hub
+      - local-registry
+    networks:
+      - pytest-network
+    command: >
+      sh -c "
+        echo 'Waiting for Selenium Hub to be ready...' &&
+        while ! curl -sSf http://selenium-hub:4444/wd/hub/status > /dev/null 2>&1; do
+          sleep 1
+        done &&
+        echo 'Selenium Hub is ready!' &&
+        python -m pytest tests/ -v --alluredir=/app/reports/allure-results --tb=short
+      "
+
+  # Selenium Grid Hub
+  selenium-hub:
+    image: selenium/hub:4.15.0
+    container_name: selenium-hub
+    ports:
+      - "4444:4444"
+      - "4443:4443"
+      - "4442:4442"
+    environment:
+      - GRID_MAX_SESSION=5
+      - GRID_BROWSER_TIMEOUT=300
+      - GRID_TIMEOUT=300
+    volumes:
+      - ./logs:/opt/selenium/logs
+    networks:
+      - pytest-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Chrome nodes for parallel execution
+  selenium-chrome-1:
+    image: selenium/node-chrome:4.15.0
+    container_name: selenium-chrome-1
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+      - NODE_MAX_INSTANCES=2
+      - NODE_MAX_SESSION=2
+    volumes:
+      - /dev/shm:/dev/shm
+      - ./downloads:/home/seluser/Downloads
+    networks:
+      - pytest-network
+    shm_size: 2gb
+
+  selenium-chrome-2:
+    image: selenium/node-chrome:4.15.0
+    container_name: selenium-chrome-2
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+      - NODE_MAX_INSTANCES=2
+      - NODE_MAX_SESSION=2
+    volumes:
+      - /dev/shm:/dev/shm
+      - ./downloads:/home/seluser/Downloads
+    networks:
+      - pytest-network
+    shm_size: 2gb
+
+  # Firefox node
+  selenium-firefox:
+    image: selenium/node-firefox:4.15.0
+    container_name: selenium-firefox
+    depends_on:
+      - selenium-hub
+    environment:
+      - HUB_HOST=selenium-hub
+      - HUB_PORT=4444
+      - NODE_MAX_INSTANCES=1
+      - NODE_MAX_SESSION=1
+    volumes:
+      - /dev/shm:/dev/shm
+      - ./downloads:/home/seluser/Downloads
+    networks:
+      - pytest-network
+    shm_size: 2gb
+
+  # Local container registry (mirrors Azure Container Registry)
+  local-registry:
+    image: registry:2
+    container_name: local-registry
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./docker-registry:/var/lib/registry
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+      - REGISTRY_HTTP_ADDR=0.0.0.0:5000
+    networks:
+      - pytest-network
+
+  # Local file server (mirrors Azure Blob Storage)
+  file-server:
+    image: nginx:alpine
+    container_name: pytest-file-server
+    ports:
+      - "8080:80"
+    volumes:
+      - ./reports:/usr/share/nginx/html/reports:ro
+      - ./screenshots:/usr/share/nginx/html/screenshots:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - pytest-network
+    depends_on:
+      - pytest-runner
+
+  # Allure report server
+  allure-server:
+    image: frankescobar/allure-docker-service
+    container_name: allure-server
+    ports:
+      - "5050:5050"
+    environment:
+      - CHECK_RESULTS_EVERY_SECONDS=3
+      - KEEP_HISTORY=20
+    volumes:
+      - ./reports/allure-results:/app/allure-results
+      - ./reports/allure-reports:/app/default-reports
+    networks:
+      - pytest-network
+
+  # Local monitoring with Grafana and Prometheus (mirrors Azure Log Analytics)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - pytest-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - pytest-network
+    depends_on:
+      - prometheus
+
+  # Container health monitoring
+  docker-exporter:
+    image: prom/node-exporter:latest
+    container_name: docker-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - pytest-network
+
+# Networks
+networks:
+  pytest-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes for persistent data
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local

@@ -5,3 +5,8 @@ allure-pytest
 pytest-xdist
 pytest-failed-screenshot
 Faker
+
+# Azure integration dependencies
+azure-storage-blob==12.19.0
+azure-identity==1.15.0
+azure-core==1.29.5
