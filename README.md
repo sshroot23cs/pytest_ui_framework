@@ -115,6 +115,7 @@ python -m pytest --alluredir=reports/allure-results
 # Generate and serve report (requires allure command-line tool)
 allure serve reports/allure-results
 ```
+<img width="1920" height="1080" alt="Allure-results-report" src="https://github.com/user-attachments/assets/3e9e23cf-71b8-4157-83da-9cd4a8c75bf3" />
 
 ### Framework Validation
 
