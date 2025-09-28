@@ -1,0 +1,203 @@
+# Manual Test Execution Workflow
+# Allows manual triggering of tests with custom parameters
+
+name: 🎯 Manual Test Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_file:
+        description: 'Test file to run'
+        required: true
+        default: 'tests/test_e2e_search.py'
+        type: choice
+        options:
+          - tests/test_e2e_search.py
+          - tests/test_sample_01.py
+          - tests/test_playwright_advanced.py
+          - tests/
+      browser:
+        description: 'Browser for testing'
+        required: true
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+          - both
+      headless:
+        description: 'Run in headless mode'
+        required: false
+        default: true
+        type: boolean
+      parallel:
+        description: 'Run tests in parallel'
+        required: false
+        default: false
+        type: boolean
+      environment:
+        description: 'Test environment'
+        required: false
+        default: 'github-actions'
+        type: choice
+        options:
+          - github-actions
+          - docker
+          - local-simulation
+
+jobs:
+  manual-tests:
+    name: 🧪 Manual Test Run (${{ inputs.browser }})
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🛒 Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Setup Python Environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+    
+    - name: 🌐 Setup Node.js for Allure
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: 📦 Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        npm install -g allure-commandline
+    
+    - name: 🔧 Setup Chrome Browser
+      if: inputs.browser == 'chrome' || inputs.browser == 'both'
+      uses: browser-actions/setup-chrome@latest
+      with:
+        chrome-version: stable
+    
+    - name: 🔧 Setup Firefox Browser
+      if: inputs.browser == 'firefox' || inputs.browser == 'both'
+      uses: browser-actions/setup-firefox@latest
+    
+    - name: 📁 Prepare Test Environment
+      run: |
+        mkdir -p reports/allure-results reports/screenshots logs
+        echo "🎯 Test Configuration:"
+        echo "  - Test File: ${{ inputs.test_file }}"
+        echo "  - Browser: ${{ inputs.browser }}"
+        echo "  - Headless: ${{ inputs.headless }}"
+        echo "  - Parallel: ${{ inputs.parallel }}"
+        echo "  - Environment: ${{ inputs.environment }}"
+    
+    - name: 🧪 Execute Tests (Chrome)
+      if: inputs.browser == 'chrome' || inputs.browser == 'both'
+      run: |
+        PYTEST_CMD="python -m pytest ${{ inputs.test_file }} -v --browser=chrome"
+        
+        if [ "${{ inputs.headless }}" = "true" ]; then
+          PYTEST_CMD="$PYTEST_CMD --headless"
+        fi
+        
+        if [ "${{ inputs.parallel }}" = "true" ]; then
+          PYTEST_CMD="$PYTEST_CMD -n auto"
+        fi
+        
+        PYTEST_CMD="$PYTEST_CMD --alluredir=reports/allure-results/chrome"
+        PYTEST_CMD="$PYTEST_CMD --junitxml=reports/junit-chrome.xml"
+        PYTEST_CMD="$PYTEST_CMD --html=reports/report-chrome.html --self-contained-html"
+        
+        echo "Executing: $PYTEST_CMD"
+        $PYTEST_CMD
+      env:
+        HEADLESS: ${{ inputs.headless }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        DISPLAY: :99
+      continue-on-error: true
+    
+    - name: 🧪 Execute Tests (Firefox)
+      if: inputs.browser == 'firefox' || inputs.browser == 'both'
+      run: |
+        PYTEST_CMD="python -m pytest ${{ inputs.test_file }} -v --browser=firefox"
+        
+        if [ "${{ inputs.headless }}" = "true" ]; then
+          PYTEST_CMD="$PYTEST_CMD --headless"
+        fi
+        
+        if [ "${{ inputs.parallel }}" = "true" ]; then
+          PYTEST_CMD="$PYTEST_CMD -n auto"
+        fi
+        
+        PYTEST_CMD="$PYTEST_CMD --alluredir=reports/allure-results/firefox"
+        PYTEST_CMD="$PYTEST_CMD --junitxml=reports/junit-firefox.xml"
+        PYTEST_CMD="$PYTEST_CMD --html=reports/report-firefox.html --self-contained-html"
+        
+        echo "Executing: $PYTEST_CMD"
+        $PYTEST_CMD
+      env:
+        HEADLESS: ${{ inputs.headless }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        DISPLAY: :99
+      continue-on-error: true
+    
+    - name: 📊 Generate Allure Reports
+      if: always()
+      run: |
+        if [ -d "reports/allure-results/chrome" ]; then
+          allure generate reports/allure-results/chrome -o reports/allure-chrome --clean
+          echo "✅ Chrome Allure report generated"
+        fi
+        
+        if [ -d "reports/allure-results/firefox" ]; then
+          allure generate reports/allure-results/firefox -o reports/allure-firefox --clean
+          echo "✅ Firefox Allure report generated"
+        fi
+    
+    - name: 📋 Test Results Summary
+      if: always()
+      run: |
+        echo "# 🎯 Manual Test Execution Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Configuration" >> $GITHUB_STEP_SUMMARY
+        echo "- **Test File**: ${{ inputs.test_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Browser**: ${{ inputs.browser }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Headless**: ${{ inputs.headless }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Parallel**: ${{ inputs.parallel }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📈 Results" >> $GITHUB_STEP_SUMMARY
+        
+        # Check for JUnit reports to determine success
+        if [ -f "reports/junit-chrome.xml" ]; then
+          echo "✅ **Chrome Tests**: Executed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "reports/junit-firefox.xml" ]; then
+          echo "✅ **Firefox Tests**: Executed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📁 Generated Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- 🌐 Allure Reports (Interactive)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📄 HTML Reports (Self-contained)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📊 JUnit XML (CI Integration)" >> $GITHUB_STEP_SUMMARY
+        echo "- 📸 Screenshots (On failures)" >> $GITHUB_STEP_SUMMARY
+    
+    - name: 📤 Upload Test Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: manual-test-results-${{ github.run_number }}
+        path: |
+          reports/
+          screenshots/
+          logs/
+        retention-days: 30
+    
+    - name: 📬 Job Status
+      if: always()
+      run: |
+        echo "🎯 Manual test execution completed!"
+        echo "📁 Check the uploaded artifacts for detailed reports."
+        echo "🔗 Download artifacts from the workflow run page."
