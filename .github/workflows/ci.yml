@@ -1,0 +1,119 @@
+# GitHub Actions Workflow for Continuous Integration
+# Basic CI workflow for main branch commits
+
+name: 🚀 Continuous Integration
+
+on:
+  push:
+    branches: [ main, master ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_path:
+        description: 'Test path to run (e.g., tests/test_e2e_search.py)'
+        required: false
+        default: 'tests/'
+      browser:
+        description: 'Browser to use'
+        required: false
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+          - both
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '18'
+
+jobs:
+  ci-tests:
+    name: 🧪 CI Test Execution
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox]
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: 🌐 Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: 📦 Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        npm install -g allure-commandline
+    
+    - name: 🔧 Setup Browser (${{ matrix.browser }})
+      uses: browser-actions/setup-chrome@latest
+      if: matrix.browser == 'chrome'
+    
+    - name: 🔧 Setup Browser (${{ matrix.browser }})
+      uses: browser-actions/setup-firefox@latest
+      if: matrix.browser == 'firefox'
+    
+    - name: 📁 Create Directories
+      run: mkdir -p reports/allure-results reports/screenshots
+    
+    - name: 🧪 Run Tests
+      run: |
+        TEST_PATH="${{ github.event.inputs.test_path || 'tests/test_e2e_search.py' }}"
+        BROWSER="${{ github.event.inputs.browser && github.event.inputs.browser != 'both' && github.event.inputs.browser || matrix.browser }}"
+        
+        python -m pytest $TEST_PATH \
+          -v \
+          --browser=$BROWSER \
+          --headless \
+          --alluredir=reports/allure-results \
+          --junitxml=reports/junit-report-$BROWSER.xml \
+          --html=reports/html-report-$BROWSER.html \
+          --self-contained-html
+      env:
+        HEADLESS: true
+        DISPLAY: :99
+    
+    - name: 📊 Generate Allure Report
+      if: always()
+      run: allure generate reports/allure-results -o reports/allure-report-${{ matrix.browser }} --clean
+    
+    - name: 📤 Upload Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ci-results-${{ matrix.browser }}
+        path: reports/
+        retention-days: 7
+
+  notify-results:
+    name: 📬 Notify Results
+    runs-on: ubuntu-latest
+    needs: ci-tests
+    if: always()
+    
+    steps:
+    - name: 📊 Create Summary
+      run: |
+        echo "# 🚀 CI Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Triggered by**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "- Status: ${{ needs.ci-tests.result }}" >> $GITHUB_STEP_SUMMARY

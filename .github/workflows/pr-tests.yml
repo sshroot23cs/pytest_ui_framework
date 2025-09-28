@@ -1,0 +1,323 @@
+# GitHub Actions Workflow for Automated E2E Testing
+# Triggers on Pull Requests to main branch and runs comprehensive test suite
+
+name: 🧪 E2E Test Suite - PR Validation
+
+on:
+  pull_request:
+    branches: [ main, master ]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ main, master ]
+
+# Cancel previous workflow runs if new commits are pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '18'
+
+jobs:
+  # Job 1: Code Quality and Linting
+  code-quality:
+    name: 📋 Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: 📦 Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flake8 black isort
+    
+    - name: 🧹 Code Formatting Check (Black)
+      run: black --check --diff .
+      continue-on-error: true
+    
+    - name: 📏 Import Sorting Check (isort)
+      run: isort --check-only --diff .
+      continue-on-error: true
+    
+    - name: 🔍 Linting (Flake8)
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      continue-on-error: true
+    
+    - name: ✅ Framework Validation
+      run: python validate_framework.py
+
+  # Job 2: E2E Test Execution (Chrome)
+  e2e-tests-chrome:
+    name: 🌐 E2E Tests (Chrome)
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: 🌐 Set up Node.js (for Allure)
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+    
+    - name: 📦 Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 🎯 Install Allure Commandline
+      run: npm install -g allure-commandline
+    
+    - name: 🔧 Install Chrome and ChromeDriver
+      uses: browser-actions/setup-chrome@latest
+      with:
+        chrome-version: stable
+    
+    - name: 📁 Create Reports Directory
+      run: mkdir -p reports/allure-results reports/screenshots
+    
+    - name: 🧪 Run E2E Tests (Chrome)
+      run: |
+        python -m pytest tests/test_e2e_search.py \
+          -v \
+          --browser=chrome \
+          --headless \
+          --alluredir=reports/allure-results \
+          --junitxml=reports/junit-report.xml \
+          --html=reports/html-report.html \
+          --self-contained-html
+      env:
+        HEADLESS: true
+        DISPLAY: :99
+    
+    - name: 📊 Generate Allure Report
+      if: always()
+      run: |
+        allure generate reports/allure-results -o reports/allure-report --clean
+    
+    - name: 📤 Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: chrome-test-results
+        path: |
+          reports/
+          screenshots/
+        retention-days: 30
+    
+    - name: 📈 Publish Test Report
+      if: always()
+      uses: dorny/test-reporter@v1
+      with:
+        name: Chrome E2E Test Results
+        path: reports/junit-report.xml
+        reporter: java-junit
+
+  # Job 3: E2E Test Execution (Firefox)
+  e2e-tests-firefox:
+    name: 🦊 E2E Tests (Firefox) 
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: 🌐 Set up Node.js (for Allure)
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: 📦 Install Python Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 🎯 Install Allure Commandline
+      run: npm install -g allure-commandline
+    
+    - name: 🔧 Install Firefox and GeckoDriver
+      uses: browser-actions/setup-firefox@latest
+    
+    - name: 📁 Create Reports Directory
+      run: mkdir -p reports/allure-results reports/screenshots
+    
+    - name: 🧪 Run E2E Tests (Firefox)
+      run: |
+        python -m pytest tests/test_e2e_search.py \
+          -v \
+          --browser=firefox \
+          --headless \
+          --alluredir=reports/allure-results \
+          --junitxml=reports/junit-report.xml \
+          --html=reports/html-report.html \
+          --self-contained-html
+      env:
+        HEADLESS: true
+        DISPLAY: :99
+    
+    - name: 📊 Generate Allure Report
+      if: always()
+      run: |
+        allure generate reports/allure-results -o reports/allure-report --clean
+    
+    - name: 📤 Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: firefox-test-results
+        path: |
+          reports/
+          screenshots/
+        retention-days: 30
+
+  # Job 4: Docker Environment Test
+  docker-tests:
+    name: 🐳 Docker Environment Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 🏗️ Build Docker Image
+      run: |
+        docker build -f Dockerfile.local -t pytest-ui-framework:test .
+    
+    - name: 📁 Create Host Directories
+      run: |
+        mkdir -p $(pwd)/reports $(pwd)/screenshots $(pwd)/logs
+    
+    - name: 🧪 Run Tests in Docker
+      run: |
+        docker run --rm \
+          -v $(pwd)/reports:/app/reports \
+          -v $(pwd)/screenshots:/app/screenshots \
+          -v $(pwd)/logs:/app/logs \
+          -e HEADLESS=true \
+          -e ENVIRONMENT=ci-docker \
+          pytest-ui-framework:test \
+          python -m pytest tests/test_e2e_search.py -v \
+          --alluredir=/app/reports/allure-results \
+          --junitxml=/app/reports/junit-report.xml
+    
+    - name: 📤 Upload Docker Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-test-results
+        path: |
+          reports/
+          screenshots/
+          logs/
+        retention-days: 30
+
+  # Job 5: Test Results Summary
+  test-summary:
+    name: 📋 Test Results Summary
+    runs-on: ubuntu-latest
+    needs: [e2e-tests-chrome, e2e-tests-firefox, docker-tests]
+    if: always()
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 📥 Download All Test Results
+      uses: actions/download-artifact@v4
+      with:
+        path: all-results
+    
+    - name: 📊 Create Test Summary
+      run: |
+        echo "# 🧪 E2E Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📈 Test Execution Status" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if Chrome tests passed
+        if [ -f "all-results/chrome-test-results/reports/junit-report.xml" ]; then
+          echo "✅ **Chrome Tests**: Completed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Chrome Tests**: Failed or not run" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check if Firefox tests passed
+        if [ -f "all-results/firefox-test-results/reports/junit-report.xml" ]; then
+          echo "✅ **Firefox Tests**: Completed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Firefox Tests**: Failed or not run" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Check if Docker tests passed
+        if [ -f "all-results/docker-test-results/reports/junit-report.xml" ]; then
+          echo "✅ **Docker Tests**: Completed" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Docker Tests**: Failed or not run" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📁 Available Reports" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- 🌐 **Allure Reports**: Available in artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- 📄 **HTML Reports**: Self-contained test reports" >> $GITHUB_STEP_SUMMARY
+        echo "- 📊 **JUnit XML**: For CI/CD integration" >> $GITHUB_STEP_SUMMARY
+        echo "- 📸 **Screenshots**: Captured on test failures" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔗 PR Information" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${{ github.head_ref }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Target**: ${{ github.base_ref }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Job 6: PR Status Check
+  pr-status-check:
+    name: ✅ PR Status Check
+    runs-on: ubuntu-latest
+    needs: [e2e-tests-chrome, e2e-tests-firefox, docker-tests]
+    if: always()
+    
+    steps:
+    - name: 🎯 Evaluate Test Results
+      run: |
+        if [ "${{ needs.e2e-tests-chrome.result }}" == "success" ] && \
+           [ "${{ needs.e2e-tests-firefox.result }}" == "success" ] && \
+           [ "${{ needs.docker-tests.result }}" == "success" ]; then
+          echo "✅ All tests passed! PR is ready for review."
+          exit 0
+        else
+          echo "❌ Some tests failed. Please check the test results."
+          echo "Chrome Tests: ${{ needs.e2e-tests-chrome.result }}"
+          echo "Firefox Tests: ${{ needs.e2e-tests-firefox.result }}"
+          echo "Docker Tests: ${{ needs.docker-tests.result }}"
+          exit 1
+        fi

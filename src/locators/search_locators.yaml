@@ -3,6 +3,41 @@ search-box:
   type: "xpath"
   value: "//*[.='Build a watchlist']//ancestor::*[4]/preceding-sibling::*[1]/*[last()]//input[2]"
 
+# Alternative search box locator (more robust)
+search-input:
+  type: "css"
+  value: "input[placeholder*='Search'], input[aria-label*='Search']"
+
+# Search button
+search-button:
+  type: "xpath"
+  value: "//button[@type='submit' or contains(@class, 'search')]"
+
+# Search results container
+search-results:
+  type: "css"
+  value: "[data-test*='search-result'], .search-results, [class*='result']"
+
+# Stock price display
+stock-price:
+  type: "xpath"
+  value: "//*[contains(@class, 'price') or contains(@data-test, 'price')]"
+
+# Stock name/symbol display
+stock-symbol:
+  type: "xpath"
+  value: "//*[contains(@class, 'symbol') or contains(@data-test, 'symbol')]"
+
+# Clear search button/icon
+clear-search:
+  type: "xpath"
+  value: "//button[contains(@class, 'clear') or @aria-label='Clear']"
+
+# Search suggestions dropdown
+search-suggestions:
+  type: "css"
+  value: "[role='listbox'], .suggestions, [class*='dropdown']"
+
 
 
 
