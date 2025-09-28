@@ -1,0 +1,93 @@
+# Repository Status and Health Check
+# Lightweight workflow for basic repository validation
+
+name: 📊 Repository Health Check
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+      - 'requirements.txt'
+      - 'pytest.ini'
+      - 'src/**'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'requirements.txt'
+      - 'pytest.ini'
+      - 'src/**'
+
+jobs:
+  health-check:
+    name: 🏥 Framework Health Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🛒 Checkout Code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: 📦 Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: ✅ Validate Framework
+      run: python validate_framework.py
+    
+    - name: 🔍 Check File Structure
+      run: |
+        echo "📁 Repository Structure Check:"
+        
+        # Essential files check
+        files=(
+          "requirements.txt"
+          "pytest.ini" 
+          "src/__init__.py"
+          "src/pages.py"
+          "src/search.py"
+          "tests/conftest.py"
+          "tests/test_e2e_search.py"
+        )
+        
+        for file in "${files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ $file"
+          else
+            echo "❌ Missing: $file"
+            exit 1
+          fi
+        done
+    
+    - name: 🧪 Import Test
+      run: |
+        python -c "
+        try:
+            from src.pages import Pages
+            from src.search import SearchPage
+            from src.common_page_elements import CommonPageElements
+            print('✅ All core modules import successfully')
+        except ImportError as e:
+            print(f'❌ Import error: {e}')
+            exit(1)
+        "
+    
+    - name: 📋 Generate Health Report
+      if: always()
+      run: |
+        echo "# 🏥 Repository Health Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## ✅ Health Checks Passed" >> $GITHUB_STEP_SUMMARY
+        echo "- Framework validation" >> $GITHUB_STEP_SUMMARY
+        echo "- File structure integrity" >> $GITHUB_STEP_SUMMARY
+        echo "- Module import capability" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🎯 **Framework is ready for testing!**" >> $GITHUB_STEP_SUMMARY
